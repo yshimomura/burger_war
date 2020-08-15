@@ -17,6 +17,9 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from aruco_msgs.msg import MarkerArray
 from nav_msgs.msg import Odometry
+import actionlib #topic通信においてクライアントからの返信を要求するライブラリ
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+import actionlib_msgs
 
 class RandomBot():
     def __init__(self, bot_name="NoName"):
@@ -39,14 +42,16 @@ class RandomBot():
         # publisher
         self.vel_pub = rospy.Publisher('cmd_vel', Twist,queue_size=1)
         # subscriber
-        self.lidar_sub = rospy.Subscriber('scan',LaserScan,self.LidarCallback)
+        """self.lidar_sub = rospy.Subscriber('scan',LaserScan,self.LidarCallback)"""
         self.id_sub = rospy.Subscriber('target_id',MarkerArray,self.IdCallback)
         self.pose_sub = rospy.Subscriber('odom', Odometry, self.poseCallback)
+        #actionlib
+        self.client = actionlib.SimpleActionClient('move_base',MoveBaseAction)
 
         self.twist = Twist()
         self.twist.linear.x = self.speed; self.twist.linear.y = 0.; self.twist.linear.z = 0.
         self.twist.angular.x = 0.; self.twist.angular.y = 0.; self.twist.angular.z = 0.
-    
+    """
     def LidarCallback(self,data):
         scan = data.ranges
         self.scan = scan
@@ -65,7 +70,7 @@ class RandomBot():
         if min(forword_scan) < 0.2:
             return True
         return False
-    
+        """
     def IdCallback(self, data):
         id = data.markers[0].id
         if self.id_list[-1]!=id:
@@ -143,9 +148,41 @@ class RandomBot():
             self.calcTwist()
         return self.twist
 
-    def strategy(self):
-        r = rospy.Rate(2) # change speed 1fps
+    def setGoal(self,x,y,yaw):
+        self.client.wait_for_server()
 
+        goal = MoveBaseGoal()
+        goal.target_pose.header.frame_id = "/map"
+        goal.target_pose.header.stamp = rospy.Time.now()
+        goal.target_pose.pose.position.x = x
+        goal.target_pose.pose.position.y = y
+
+        # Euler to Quartanion
+        q=tf.transformations.quaternion_from_euler(0,0,yaw)        
+        goal.target_pose.pose.orientation.x = q[0]
+        goal.target_pose.pose.orientation.y = q[1]
+        goal.target_pose.pose.orientation.z = q[2]
+        goal.target_pose.pose.orientation.w = q[3]
+
+        self.client.send_goal(goal)
+        wait = self.client.wait_for_result()
+        if not wait:
+            rospy.logerr("Action server not available!")
+            rospy.signal_shutdown("Action server not available!")
+        else:
+            return self.client.get_result()
+
+    def strategy(self):
+        r = rospy.Rate(3) # change speed 1fps
+
+        self.setGoal(-0.5,0,0)
+        self.setGoal(-0.5,0,3.1415/2)
+        self.setGoal(0,0.5,0)
+        self.setGoal(0,0.5,3.1415)
+        self.setGoal(-0.5,0,-3.1415/2)
+        self.setGoal(0,-0.5,0)
+        self.setGoal(0,-0.5,3.1415)
+        """
         target_speed = 0
         target_turn = 0
         control_speed = 0
@@ -166,6 +203,7 @@ class RandomBot():
                 print(self.id_list)
                 self.vel_pub.publish(twist)
             r.sleep()
+            """
 
 if __name__ == '__main__':
     rospy.init_node('random_run')
