@@ -12,10 +12,11 @@ by Takuya Yamaguhi.
 import rospy
 import random
 import numpy as np
-
+import tf
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from aruco_msgs.msg import MarkerArray
+from nav_msgs.msg import Odometry
 
 class RandomBot():
     def __init__(self, bot_name="NoName"):
@@ -30,12 +31,17 @@ class RandomBot():
         self.scan = []
         # target_id
         self.id_list = np.zeros(1)
+        # position
+        self.pose_x = 0
+        self.pose_y = 0
+        self.th = 0
 
-        # velocity publisher
+        # publisher
         self.vel_pub = rospy.Publisher('cmd_vel', Twist,queue_size=1)
-        #subscriber
+        # subscriber
         self.lidar_sub = rospy.Subscriber('scan',LaserScan,self.LidarCallback)
         self.id_sub = rospy.Subscriber('target_id',MarkerArray,self.IdCallback)
+        self.pose_sub = rospy.Subscriber('odom', Odometry, self.poseCallback)
 
         self.twist = Twist()
         self.twist.linear.x = self.speed; self.twist.linear.y = 0.; self.twist.linear.z = 0.
@@ -62,12 +68,45 @@ class RandomBot():
     
     def IdCallback(self, data):
         id = data.markers[0].id
-        self.id_list = np.append(self.id_list, id)
+        if self.id_list[-1]!=id:
+            self.id_list = np.append(self.id_list, id)
+        else:
+            pass
+
+    def poseCallback(self, data):
+        '''
+        pose topic from amcl localizer
+        update robot twist
+        '''
+        pose_x = data.pose.pose.position.x
+        self.pose_x = pose_x
+        pose_y = data.pose.pose.position.y
+        self.pose_y = pose_y
+        quaternion = data.pose.pose.orientation
+        rpy = tf.transformations.euler_from_quaternion((quaternion.x, quaternion.y, quaternion.z, quaternion.w))
+        th = rpy[2]
+        self.th = th
+        """
+        th_xy = self.calcTargetTheta(pose_x,pose_y)
+        
+        th_diff = th_xy - th
+        while not PI >= th_diff >= -PI:
+            if th_diff > 0:
+                th_diff -= 2*PI
+            elif th_diff < 0:
+                th_diff += 2*PI
+
+        delta_th = self.calcDeltaTheta(th_diff)
+        new_twist_ang_z = max(-0.3, min((th_diff + delta_th) * self.k , 0.3))
+        
+        self.twist.angular.z = new_twist_ang_z
+        """
+        print(self.pose_x,self.pose_y,self.th)
 
     def calcTwist(self):
         value = random.randint(1,1000)
-        if value < 350:
-            x = 0.2
+        if value < 300:
+            x = 0.3
             th = 0
         elif value < 500:
             x = -0.2
@@ -91,9 +130,21 @@ class RandomBot():
         self.twist.linear.x = 0.3; self.twist.linear.y = 0; self.twist.linear.z = 0
         self.twist.angular.x = 0; self.twist.angular.y = 0; self.twist.angular.z = 0
         return self.twist
+    
+    def SecondPoint(self):
+        self.twist = Twist()
+        if self.pose_y>-0.7:
+            self.twist.linear.x = -0.3; self.twist.linear.y = 0; self.twist.linear.z = 0
+            self.twist.angular.x = 0; self.twist.angular.y = 0; self.twist.angular.z = 0
+        elif self.th>1:
+            self.twist.linear.x = 0; self.twist.linear.y = 0; self.twist.linear.z = 0
+            self.twist.angular.x = 0; self.twist.angular.y = 0; self.twist.angular.z = 0.5
+        else:
+            self.calcTwist()
+        return self.twist
 
     def strategy(self):
-        r = rospy.Rate(1) # change speed 1fps
+        r = rospy.Rate(2) # change speed 1fps
 
         target_speed = 0
         target_turn = 0
@@ -105,12 +156,15 @@ class RandomBot():
                 twist_first = self.FirstPoint()
                 print(twist_first)
                 self.vel_pub.publish(twist_first)
+            elif self.id_list[-1]==2:
+                twist_second = self.SecondPoint()
+                print(twist_second)
+                self.vel_pub.publish(twist_second)
             else:
                 twist = self.calcTwist()
                 print(twist)
                 print(self.id_list)
                 self.vel_pub.publish(twist)
-            
             r.sleep()
 
 if __name__ == '__main__':
