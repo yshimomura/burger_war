@@ -13,11 +13,12 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   control_msgs
-	std_msgs
   sensor_msgs
   cv_bridge
   tf
 )
+find_package(OpenCV)
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
