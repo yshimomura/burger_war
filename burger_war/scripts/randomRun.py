@@ -4,6 +4,7 @@
 import rospy
 import random
 import numpy as np
+import math
 import tf
 import cv2
 import sys
@@ -21,7 +22,7 @@ class RandomBot():
         # bot name 
         self.name = bot_name
         #wall distance
-        self.near_wall_range = 0.15  # [m]
+        self.near_wall_range = 0.2  # [m]
         # lidar scan
         self.scan = []
         # target_id
@@ -31,10 +32,9 @@ class RandomBot():
         self.pose_y = 0
         self.th = 0
         # speed [m/s]
-        self.speed = 0.12
+        self.speed = 0.1
 
         self.bridge = CvBridge()
-        rospy.on_shutdown(self.cleanup)
 
         # publisher
         self.vel_pub = rospy.Publisher('cmd_vel', Twist,queue_size=1)
@@ -49,19 +49,14 @@ class RandomBot():
         self.twist = Twist()
         self.twist.linear.x = 0; self.twist.linear.y = 0.; self.twist.linear.z = 0.
         self.twist.angular.x = 0.; self.twist.angular.y = 0.; self.twist.angular.z = 0.
+        #self.enemy_detector = EnemyDetector()
 
-    def LidarCallback(self,data):
+        self.image_state = 0
+        
+    def LidarCallback(self, data):
         scan = data.ranges
         self.scan = scan
-        near_wall = self.NearWall(scan)
-        if near_wall==1:
-            self.twist.linear.x = -self.speed / 2
-            self.twist.angular.z = 0
-        elif near_wall==2:
-            self.twist.linear.x = self.speed / 2
-            self.twist.angular.z = 0
-        else:
-            self.twist.linear.x = self.speed
+        self.near_wall = self.NearWall(scan)
 
     def NearWall(self, scan):
         if not len(scan) == 360:
@@ -97,21 +92,6 @@ class RandomBot():
         rpy = tf.transformations.euler_from_quaternion((quaternion.x, quaternion.y, quaternion.z, quaternion.w))
         th = rpy[2]
         self.th = th
-        """
-        th_xy = self.calcTargetTheta(pose_x,pose_y)
-        
-        th_diff = th_xy - th
-        while not PI >= th_diff >= -PI:
-            if th_diff > 0:
-                th_diff -= 2*PI
-            elif th_diff < 0:
-                th_diff += 2*PI
-
-        delta_th = self.calcDeltaTheta(th_diff)
-        new_twist_ang_z = max(-0.3, min((th_diff + delta_th) * self.k , 0.3))
-        
-        self.twist.angular.z = new_twist_ang_z
-        """
         print(self.pose_x,self.pose_y,self.th)
 
     def ImageCallback(self, image):
@@ -125,17 +105,13 @@ class RandomBot():
         print(rects)
         if rects!=[]:
             if rects[0][0] + rects[0][2]/2 < 220:
-                self.twist.linear.y = 0; self.twist.linear.z = 0
-                self.twist.angular.x = 0; self.twist.angular.y = 0; self.twist.angular.z = 0.3
+                self.image_state = 3
             elif rects[0][0] + rects[0][2]/2 > 260:
-                self.twist.linear.y = 0; self.twist.linear.z = 0
-                self.twist.angular.x = 0; self.twist.angular.y = 0; self.twist.angular.z = -0.3
+                self.image_state = 4
             else:
-                self.twist.linear.y = 0; self.twist.linear.z = 0
-                self.twist.angular.x = 0; self.twist.angular.y = 0; self.twist.angular.z = 0
+                self.image_state = 5
         else:
-            self.twist.linear.x = -0.1; self.twist.linear.y = 0; self.twist.linear.z = 0
-            self.twist.angular.x = 0; self.twist.angular.y = 0; self.twist.angular.z = 0
+            self.image_state = 6
         cv2.waitKey(1)
 
     def process_image(self, image):
@@ -143,23 +119,28 @@ class RandomBot():
         h = hsv[:, :, 0]
         s = hsv[:, :, 1]
         mask = np.zeros(h.shape, dtype=np.uint8)
+        mask_g = np.zeros(h.shape, dtype=np.uint8)
         mask[((h < 20) | (h > 200)) & (s > 128)] = 255
+        mask_g[((h < 150) & (h > 70)) & (s > 128)] = 255
         _, contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        _, contours_g, _ = cv2.findContours(mask_g, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         rects = []
+        rects_g = []
         for contour in contours:
             approx = cv2.convexHull(contour)
             rect = cv2.boundingRect(approx)
             rects.append(np.array(rect))
-        return rects
-    
-    def cleanup(self):
-        cv2.destroyAllWindows() 
+        for contour in contours_g:
+            approx = cv2.convexHull(contour)
+            rect = cv2.boundingRect(approx)
+            rects_g.append(np.array(rect))
+        return rects_g
 
     def FirstPoint(self):
         self.twist.linear.x = 0.2; self.twist.linear.y = 0; self.twist.linear.z = 0
         self.twist.angular.x = 0; self.twist.angular.y = 0; self.twist.angular.z = 0
         return self.twist
-    
+
     def setGoal(self,x,y,yaw):
         self.client.wait_for_server()
 
@@ -185,19 +166,38 @@ class RandomBot():
             return self.client.get_result()
 
     def strategy(self):
-        r = rospy.Rate(5) # change speed 1fps
+        r = rospy.Rate(10) # change speed 1fps
         flag = 0
+        twist = Twist()
         while not rospy.is_shutdown():
             if self.id_list[-1]==0:
-                twist_first = self.FirstPoint()
-                print(twist_first)
-                self.vel_pub.publish(twist_first)
+                twist = self.FirstPoint()
+                #print(twist_first)
+                #self.vel_pub.publish(twist_first)
             elif flag==0:
                 self.setGoal(0.2,0.5,-np.pi/4)
                 flag = 1
-            else:
-                self.vel_pub.publish(self.twist)
-            print(self.twist)
+            elif self.near_wall==1:
+                twist.linear.x = -self.speed
+                twist.angular.z = -0.2
+            elif self.near_wall==2:
+                twist.linear.x = self.speed
+                twist.angular.z = 0.2
+            elif self.image_state==3:
+                twist.linear.x = 0.1
+                twist.angular.z = 0.15
+            elif self.image_state==4:
+                twist.linear.x = 0.1
+                twist.angular.z = -0.15
+            elif self.image_state==5:
+                twist.linear.x = 0.1
+                twist.angular.z = 0
+            elif self.image_state==6:
+                #twist.linear.x = -0.1
+                #twist.angular.z = 0
+                self.setGoal(0,-0.5,np.pi/4)
+            self.vel_pub.publish(twist)
+            #print(twist)
             r.sleep()
 
 if __name__ == '__main__':
