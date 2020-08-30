@@ -217,12 +217,13 @@ class RandomBot():
             elif flag==0:
                 self.setGoal(0.2,0.5,-np.pi/4)
                 flag = 1
-            else:
+            elif flag==1:
                 self.DetectEnemy()
+                flag = 2
                 #"""
-            """
+            #"""
             elif self.near_wall==1:
-                twist.linear.x = -self.speed
+                twist.linear.x = -self.speed/2
                 twist.angular.z = -0.2
             elif self.near_wall==2:
                 twist.linear.x = self.speed
@@ -239,10 +240,11 @@ class RandomBot():
             elif self.image_state==6:
                 #twist.linear.x = -0.1
                 #twist.angular.z = 0
-                self.setGoal(0,-0.5,np.pi/4)
-            else:
-                self.DetectEnemy()
-            """
+                #self.setGoal(0,-0.5,np.pi/4)
+                flag = 1
+            #else:
+                #self.DetectEnemy()
+            #"""
             self.vel_pub.publish(twist)
             #print(twist)
             r.sleep()
