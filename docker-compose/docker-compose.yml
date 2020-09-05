@@ -1,0 +1,30 @@
+version: "3.7"
+
+services:
+  burger:
+    build:
+      context: ./burger
+      target: burger
+      args:
+        UID: ${UID:?}
+        GID: ${GID:?}
+    environment:
+      DISPLAY:
+    devices:
+      - "/dev/dri"
+    volumes:
+      - type: bind
+        source: ../
+        target: /home/burger/catkin_ws/src/burger_war
+      - type: bind
+        source: /tmp/.X11-unix
+        target: /tmp/.X11-unix
+      - type: volume
+        source: gazebo-cache
+        target: /home/burger/.gazebo
+    tty: true
+    init: true
+
+volumes:
+  gazebo-cache:
+  developer-home:
