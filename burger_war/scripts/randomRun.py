@@ -99,7 +99,7 @@ class RandomBot():
         rpy = tf.transformations.euler_from_quaternion((quaternion.x, quaternion.y, quaternion.z, quaternion.w))
         th = rpy[2]
         self.th = th
-        print(self.pose_x,self.pose_y,self.th)
+        #print(self.pose_x,self.pose_y,self.th)
 
     def ImageCallback(self, image):
         try:
@@ -174,6 +174,8 @@ class RandomBot():
             rospy.signal_shutdown("Action server not available!")
         else:
             return self.client.get_result()
+            self.flag = 7
+            break
 
     def DetectEnemy(self):
         enemy_dist = []
@@ -224,7 +226,8 @@ class RandomBot():
             #print(sum(np.nonzero(self.enemy_list)))
             x = self.pose_y + ave_enemy_dist * np.cos(th_0 + ave_enemy_direc)
             y = -self.pose_x + ave_enemy_dist * np.sin(th_0 + ave_enemy_direc)
-            self.setGoal(x,y,ave_enemy_direc)
+            self.setGoal(x,-(y+0.1),ave_enemy_direc)
+            self.state = 2
             #print(x,y)
 
     def strategy(self):
@@ -237,12 +240,12 @@ class RandomBot():
                 twist = self.FirstPoint()
             elif self.state==0:
                 self.setGoal(0.2,0.5,-np.pi/4)
-                self.state = 1
+                self.state = 2
             elif self.state==1:
                 #self.DetectEnemy()
                 self.state = 2
-                #twist.linear.x = 0
-                #twist.angular.z = 0
+                self.flag = 7
+                self.DetectEnemy()
             elif self.flag==3:
                 twist.linear.x = -self.speed/2
                 twist.angular.z = -0.1
@@ -287,7 +290,9 @@ class RandomBot():
                 #self.flag = 1
                 pass"""
             self.vel_pub.publish(twist)
+            print 'flag='
             print self.flag
+            print 'state='
             print self.state
             #print(twist)
             r.sleep()
