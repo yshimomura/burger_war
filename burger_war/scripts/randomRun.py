@@ -175,7 +175,6 @@ class RandomBot():
         else:
             return self.client.get_result()
             self.flag = 7
-            break
 
     def DetectEnemy(self):
         enemy_dist = []
@@ -241,11 +240,6 @@ class RandomBot():
             elif self.state==0:
                 self.setGoal(0.2,0.5,-np.pi/4)
                 self.state = 2
-            elif self.state==1:
-                #self.DetectEnemy()
-                self.state = 2
-                self.flag = 7
-                self.DetectEnemy()
             elif self.flag==3:
                 twist.linear.x = -self.speed/2
                 twist.angular.z = -0.1
@@ -261,10 +255,15 @@ class RandomBot():
             elif self.flag==7:
                 twist.linear.x = 0.1
                 twist.angular.z = 0
+            elif self.state==1:
+                #self.DetectEnemy()
+                self.state = 2
+                self.flag = 7
+                self.DetectEnemy()
             elif self.flag==8:
                 twist.linear.x = -0.1
                 twist.angular.z = 0
-                self.state = 1
+                self.state = 1         
             """elif self.flag==1:
                 self.DetectEnemy()
                 self.flag = 2
