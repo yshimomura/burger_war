@@ -56,6 +56,7 @@ class RandomBot():
 
         #self.image_state = 0
         self.flag = 0
+        self.state = 0
         
     def LidarCallback(self, data):
         scan = data.ranges
@@ -65,7 +66,7 @@ class RandomBot():
 
     def NearWall(self, scan):
         if not len(scan) == 360:
-            return False
+            return
         forword_scan = scan[:20] + scan[-20:]
         back_scan = scan[160:200]
         # drop too small value ex) 0.0
@@ -75,7 +76,8 @@ class RandomBot():
             return 3
         elif min(back_scan) < self.near_wall_range:
             return 4
-        return 8
+        else:
+            pass
     
     def IdCallback(self, data):
         id = data.markers[0].id
@@ -97,7 +99,7 @@ class RandomBot():
         rpy = tf.transformations.euler_from_quaternion((quaternion.x, quaternion.y, quaternion.z, quaternion.w))
         th = rpy[2]
         self.th = th
-        #print(self.pose_x,self.pose_y,self.th)
+        print(self.pose_x,self.pose_y,self.th)
 
     def ImageCallback(self, image):
         try:
@@ -177,13 +179,15 @@ class RandomBot():
         enemy_dist = []
         enemy_list = []
         self.enemy_list = []
+        self.state = 2
         if len(self.scan)!=360:
             return
         enemy_dist = self.scan #[m]
         for idx in range(360):
             phi = idx * (np.pi/180) #[rad]
-            enemy_position_x = self.pose_x + enemy_dist[idx] * np.cos(self.th + phi)
-            enemy_position_y = self.pose_y + enemy_dist[idx] * np.sin(self.th + phi)
+            th_0 = self.th - np.pi/2
+            enemy_position_x = self.pose_y + enemy_dist[idx] * np.cos(th_0 + phi)
+            enemy_position_y = -self.pose_x + enemy_dist[idx] * np.sin(th_0 + phi)
             if enemy_position_x > 0:
                 diff_x_co = abs(enemy_position_x - 0.53)
             else:
@@ -218,28 +222,33 @@ class RandomBot():
             #print(self.enemy_list)
             #print(np.nonzero(self.enemy_list))
             #print(sum(np.nonzero(self.enemy_list)))
-            x = self.pose_x + ave_enemy_dist * np.cos(self.th + ave_enemy_direc)
-            y = self.pose_y + ave_enemy_dist * np.sin(self.th + ave_enemy_direc)
-            self.setGoal(-x,-y,ave_enemy_direc)
+            x = self.pose_y + ave_enemy_dist * np.cos(th_0 + ave_enemy_direc)
+            y = -self.pose_x + ave_enemy_dist * np.sin(th_0 + ave_enemy_direc)
+            self.setGoal(x,y,ave_enemy_direc)
             #print(x,y)
 
     def strategy(self):
         r = rospy.Rate(1) #fps
         twist = Twist()
-        flag = 0
         while not rospy.is_shutdown():
             ##self.DetectEnemy()
             #"""
             if self.id_list[-1]==0:
                 twist = self.FirstPoint()
-            elif flag==0:
+            elif self.state==0:
                 self.setGoal(0.2,0.5,-np.pi/4)
-                flag = 1
-            elif flag==1:
-                flag = 2
-                self.DetectEnemy()
+                self.state = 1
+            elif self.state==1:
+                #self.DetectEnemy()
+                self.state = 2
                 #twist.linear.x = 0
                 #twist.angular.z = 0
+            elif self.flag==3:
+                twist.linear.x = -self.speed/2
+                twist.angular.z = -0.1
+            elif self.flag==4:
+                twist.linear.x = self.speed/2
+                twist.angular.z = 0.15
             elif self.flag==5:
                 twist.linear.x = 0.1
                 twist.angular.z = 0.2
@@ -252,7 +261,7 @@ class RandomBot():
             elif self.flag==8:
                 twist.linear.x = -0.1
                 twist.angular.z = 0
-                flag = 1
+                self.state = 1
             """elif self.flag==1:
                 self.DetectEnemy()
                 self.flag = 2
@@ -279,6 +288,7 @@ class RandomBot():
                 pass"""
             self.vel_pub.publish(twist)
             print self.flag
+            print self.state
             #print(twist)
             r.sleep()
 
