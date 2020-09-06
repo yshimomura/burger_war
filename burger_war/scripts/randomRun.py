@@ -54,13 +54,14 @@ class RandomBot():
         self.twist.angular.x = 0.; self.twist.angular.y = 0.; self.twist.angular.z = 0.
         #self.enemy_detector = EnemyDetector()
 
-        self.image_state = 0
+        #self.image_state = 0
+        self.flag = 0
         
     def LidarCallback(self, data):
         scan = data.ranges
         self.scan = scan
         #print(len(self.scan),self.scan[0],self.scan[280])
-        self.near_wall = self.NearWall(scan)
+        self.flag = self.NearWall(scan)
 
     def NearWall(self, scan):
         if not len(scan) == 360:
@@ -71,10 +72,10 @@ class RandomBot():
         forword_scan = [x for x in forword_scan if x > 0.1]
         back_scan = [x for x in back_scan if x > 0.1]
         if min(forword_scan) < self.near_wall_range:
-            return 1
+            return 3
         elif min(back_scan) < self.near_wall_range:
-            return 2
-        return False
+            return 4
+        return 8
     
     def IdCallback(self, data):
         id = data.markers[0].id
@@ -106,16 +107,19 @@ class RandomBot():
         input_image = np.array(frame, dtype=np.uint8)
 
         rects = self.process_image(input_image)
-        #print(rects)
         if rects!=[]:
-            if rects[0][0] + rects[0][2]/2 < 220:
-                self.image_state = 3
-            elif rects[0][0] + rects[0][2]/2 > 260:
-                self.image_state = 4
+            #print rects[0]
+            if rects[0][0] + rects[0][2]/2 < 300:
+                self.flag = 5
+                print 'left'
+            elif rects[0][0] + rects[0][2]/2 > 360:
+                self.flag = 6
+                print 'right'
             else:
-                self.image_state = 5
+                self.flag = 7
+                print 'straight'
         else:
-            self.image_state = 6
+            self.flag = 8
         cv2.waitKey(1)
 
     def process_image(self, image):
@@ -180,20 +184,34 @@ class RandomBot():
             phi = idx * (np.pi/180) #[rad]
             enemy_position_x = self.pose_x + enemy_dist[idx] * np.cos(self.th + phi)
             enemy_position_y = self.pose_y + enemy_dist[idx] * np.sin(self.th + phi)
-            diff_x_co = abs(enemy_position_x - 0.53)
-            diff_y_co = abs(enemy_position_y - 0.53)
+            if enemy_position_x > 0:
+                diff_x_co = abs(enemy_position_x - 0.53)
+            else:
+                diff_x_co = abs(enemy_position_x + 0.53)
+            
+            if enemy_position_y > 0:
+                diff_y_co = abs(enemy_position_y - 0.53)
+            else:
+                diff_y_co = abs(enemy_position_x + 0.53)
+
             diff_x_ce = abs(enemy_position_x)
             diff_y_ce = abs(enemy_position_y)
 
-            if ((diff_x_co < 0.11 and diff_y_co < 0.11) or (diff_x_ce < 0.14 and diff_y_ce < 0.14)) and ((enemy_position_x < -enemy_position_y + 1.5) or (enemy_position_x < enemy_position_y + 1.5) or (enemy_position_x < enemy_position_y - 1.5) or (enemy_position_x < -enemy_position_y - 1.5)):
+            """if ((diff_x_co > 0.2 and diff_y_co > 0.2) and (diff_x_ce > 0.3 and diff_y_ce > 0.3)) and ((enemy_position_x < -enemy_position_y + 1.4) and (enemy_position_x < enemy_position_y + 1.4) and (enemy_position_x > enemy_position_y - 1.4) and (enemy_position_x > -enemy_position_y - 1.4)):
                 self.enemy_list.append(self.scan[idx])
             else:
+                self.enemy_list.append(0)"""
+            if ((enemy_position_x >= -enemy_position_y + 1.4) or (enemy_position_x >= enemy_position_y + 1.4) or (enemy_position_x <= enemy_position_y - 1.4) or (enemy_position_x <= -enemy_position_y - 1.4)):
                 self.enemy_list.append(0)
+            elif ((diff_x_co <= 0.2 and diff_y_co <= 0.2) or (diff_x_ce <= 0.4 and diff_y_ce <= 0.4)) :
+                self.enemy_list.append(0)
+            else:
+                self.enemy_list.append(self.scan[idx])
             
             enemy_list = np.array(self.enemy_list)
             ave_enemy_direc = ( sum(enemy_list[enemy_list.nonzero()]) / (len(enemy_list[enemy_list.nonzero()])+1) ) * (np.pi/180) #[rad]
             ave_enemy_dist = sum(enemy_list) / (len(enemy_list[enemy_list.nonzero()])+1)
-            print(enemy_list)
+            #print(enemy_list)
             #print(ave_enemy_direc)
             #print(ave_enemy_dist)
             #print(sum(enemy_list[enemy_list.nonzero()]))
@@ -202,13 +220,13 @@ class RandomBot():
             #print(sum(np.nonzero(self.enemy_list)))
             x = self.pose_x + ave_enemy_dist * np.cos(self.th + ave_enemy_direc)
             y = self.pose_y + ave_enemy_dist * np.sin(self.th + ave_enemy_direc)
-            self.setGoal(x,y,ave_enemy_direc)
-            print(x,y)
+            self.setGoal(-x,-y,ave_enemy_direc)
+            #print(x,y)
 
     def strategy(self):
-        r = rospy.Rate(1) # change speed 1fps
-        flag = 0
+        r = rospy.Rate(1) #fps
         twist = Twist()
+        flag = 0
         while not rospy.is_shutdown():
             ##self.DetectEnemy()
             #"""
@@ -218,34 +236,49 @@ class RandomBot():
                 self.setGoal(0.2,0.5,-np.pi/4)
                 flag = 1
             elif flag==1:
-                self.DetectEnemy()
                 flag = 2
-                #"""
-            #"""
-            elif self.near_wall==1:
-                twist.linear.x = -self.speed/2
-                twist.angular.z = -0.2
-            elif self.near_wall==2:
-                twist.linear.x = self.speed
+                self.DetectEnemy()
+                #twist.linear.x = 0
+                #twist.angular.z = 0
+            elif self.flag==5:
+                twist.linear.x = 0.1
                 twist.angular.z = 0.2
-            elif self.image_state==3:
+            elif self.flag==6:
                 twist.linear.x = 0.1
-                twist.angular.z = 0.15
-            elif self.image_state==4:
-                twist.linear.x = 0.1
-                twist.angular.z = -0.15
-            elif self.image_state==5:
+                twist.angular.z = -0.2
+            elif self.flag==7:
                 twist.linear.x = 0.1
                 twist.angular.z = 0
-            elif self.image_state==6:
+            elif self.flag==8:
+                twist.linear.x = -0.1
+                twist.angular.z = 0
+                flag = 1
+            """elif self.flag==1:
+                self.DetectEnemy()
+                self.flag = 2
+            elif self.flag==3:
+                twist.linear.x = -self.speed/2
+                twist.angular.z = -0.2
+            elif self.flag==4:
+                twist.linear.x = self.speed
+                twist.angular.z = 0.2
+            elif self.flag==5:
+                twist.linear.x = 0.1
+                twist.angular.z = 0.15
+            elif self.flag==6:
+                twist.linear.x = 0.1
+                twist.angular.z = -0.15
+            elif self.flag==7:
+                twist.linear.x = 0.1
+                twist.angular.z = 0
+            elif self.flag==8:
                 #twist.linear.x = -0.1
                 #twist.angular.z = 0
                 #self.setGoal(0,-0.5,np.pi/4)
-                flag = 1
-            #else:
-                #self.DetectEnemy()
-            #"""
+                #self.flag = 1
+                pass"""
             self.vel_pub.publish(twist)
+            print self.flag
             #print(twist)
             r.sleep()
 
