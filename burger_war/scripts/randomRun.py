@@ -235,6 +235,7 @@ class RandomBot():
     def strategy(self):
         r = rospy.Rate(1) #fps
         twist = Twist()
+        cnt = 0
         while not rospy.is_shutdown():
             ##self.DetectEnemy()
             #"""
@@ -260,7 +261,13 @@ class RandomBot():
                 twist.angular.z = 0
             elif self.state==1:
                 self.state = 2
-                self.setGoal(-1,0,-np.pi/4)
+                if cnt % 3 == 0:
+                    self.setGoal(-1,0,-np.pi/4)
+                elif cnt % 3 == 1:
+                    self.setGoal(0.2,-0.5,-np.pi/4)
+                else:
+                    self.setGoal(0.2,0.5,-np.pi*(3/4))
+                cnt += 1
                 #self.DetectEnemy()
             elif self.flag==8:
                 twist.linear.x = -0.1
