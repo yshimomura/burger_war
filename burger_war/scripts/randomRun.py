@@ -225,7 +225,10 @@ class RandomBot():
             #print(sum(np.nonzero(self.enemy_list)))
             x = self.pose_y + ave_enemy_dist * np.cos(th_0 + ave_enemy_direc)
             y = -self.pose_x + ave_enemy_dist * np.sin(th_0 + ave_enemy_direc)
-            self.setGoal(x,-(y+0.1),ave_enemy_direc)
+            if (abs(x) < 1) and (abs(y) < 1):
+                self.setGoal(x,-(y+0.1),ave_enemy_direc)
+            else:
+                pass
             self.state = 2
             #print(x,y)
 
@@ -256,10 +259,9 @@ class RandomBot():
                 twist.linear.x = 0.1
                 twist.angular.z = 0
             elif self.state==1:
-                #self.DetectEnemy()
                 self.state = 2
-                self.flag = 7
-                self.DetectEnemy()
+                self.setGoal(-1,0,-np.pi/4)
+                #self.DetectEnemy()
             elif self.flag==8:
                 twist.linear.x = -0.1
                 twist.angular.z = 0
